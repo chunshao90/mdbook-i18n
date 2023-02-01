@@ -12,7 +12,7 @@ use std::{
 use toml::value::Table;
 use toml::Value;
 
-const BASE_OUT_DIR: &str = "html";
+const BASE_OUT_DIR: &str = "i18n";
 
 #[derive(Debug)]
 pub(crate) struct RenderConfig(pub(crate) Vec<RenderItem>);
@@ -44,13 +44,14 @@ impl TryFrom<RenderContext> for RenderConfig {
                         .as_str()
                         .expect("Language for one of translations not a string"),
                 );
-                let src = String::from(
-                    table
-                        .get("src")
-                        .expect("Not found for one of translations")
-                        .as_str()
-                        .expect("Language for one of translations not a string"),
-                );
+                let src = String::from(table.get("src").map_or("translations", |v| {
+                    v.as_str()
+                        .expect("Src for one of translations not a string")
+                }));
+                let dir = String::from(table.get("dir").map_or(BASE_OUT_DIR, |v| {
+                    v.as_str()
+                        .expect("Dir for one of translations not a string")
+                }));
                 let book = {
                     let mut book: BookConfig =
                         Value::Table(table).try_into().expect("Can't parse config");
@@ -64,7 +65,9 @@ impl TryFrom<RenderContext> for RenderConfig {
                     build_config.clone(),
                     root.clone(),
                     output.clone(),
+
                     language,
+                    Some(dir),
                 )
             })
             .collect::<Vec<_>>();
@@ -75,7 +78,7 @@ impl TryFrom<RenderContext> for RenderConfig {
             .clone()
             .expect("Language for main book not found");
 
-        let main_book = RenderItem::from(config.book, config.build, root, output, language);
+        let main_book = RenderItem::from(config.book, config.build, root, output, language,None);
 
         books.insert(0, main_book);
 
@@ -108,11 +111,11 @@ impl RenderItem {
         root: PathBuf,
         rest: Value,
         language: String,
+        dir:Option<String>,
     ) -> RenderItem {
         let mut build = build;
-        fn set_build_path(build: &mut BuildConfig, language: &str) {
-            build.build_dir.push(BASE_OUT_DIR);
-            build.build_dir.push(language);
+        fn set_build_path(build: &mut BuildConfig, dir: &str) {
+            build.build_dir.push(dir);
         }
 
         fn mdbook_from_configs(book: BookConfig, build: BuildConfig, rest: Value) -> MdBookConfig {
@@ -123,7 +126,7 @@ impl RenderItem {
             new_config
         }
 
-        set_build_path(&mut build, &language);
+        set_build_path(&mut build, &dir.unwrap_or(BASE_OUT_DIR.to_string()));
         let config = mdbook_from_configs(book, build, rest);
 
         RenderItem {
